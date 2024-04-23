@@ -1,0 +1,177 @@
+import io
+import os
+import webbrowser
+import pandas as pd
+import numpy as np
+from pulp import *
+import matplotlib.pyplot as plt
+import networkx as nx
+import folium
+import googlemaps
+from polyline import decode as poly_decode
+
+
+
+try:
+    file_path1 = os.path.join("excel files", "hpeiros_new.xlsx")
+    df1 = pd.read_excel(file_path1)
+    names = df1.loc[:,['CODENAME']].drop_duplicates()
+    people_coords = df1.loc[:,['longtitude','latitude']].drop_duplicates()
+    info = df1.loc[:,['house']].drop_duplicates()
+except FileNotFoundError:
+    print("Excel file not found.")
+except pd.errors.ParserError:
+    print("Invalid excel file format.")
+
+try:
+    file_path2 = os.path.join("excel files", "hpeiros_all_centers.xlsx")
+    df2 = pd.read_excel(file_path2)
+    center_coords = df2.loc[:,['all_centers_long','all_centers_lat']].drop_duplicates()
+except FileNotFoundError:
+    print("Excel file not found.")
+except pd.errors.ParserError:
+    print("Invalid excel file format.")
+
+try:
+    file_path3 = os.path.join("excel files", "geocode synopsis EG 21_12.xlsx")
+    synopsis = pd.read_excel(file_path3, sheet_name='data_full')
+    people_ari = synopsis.loc[:,['CODENAME','ARI(gr)']].drop_duplicates().dropna()
+    name_house = df1.loc[:,['CODENAME','house']].drop_duplicates()
+    name_visit = synopsis.loc[:,['CODENAME','visit']].drop_duplicates()
+    people_visit = pd.merge(name_house, name_visit, on='CODENAME', how='inner')
+except FileNotFoundError:
+    print("Excel file not found.")
+except pd.errors.ParserError:
+    print("Invalid excel file format.")
+
+#μετατροπη συντεταγμένων longtitude και latitude 
+long_list= list()
+lat_list= list()
+for logntitude in people_coords['longtitude']:
+    digit_counts = len(str(logntitude))
+    if digit_counts==10:
+        long = logntitude*pow(10,-8)
+        long_list.append(long)
+    if digit_counts==9:
+        long = logntitude*pow(10,-7)
+        long_list.append(long)
+    if digit_counts==8:
+        long = logntitude*pow(10,-6)
+        long_list.append(long)
+
+for latitude in people_coords['latitude']:
+    digit_counts2 = len(str(latitude))
+    if digit_counts2==10:
+        lat = latitude*pow(10,-8)
+        lat_list.append(lat)
+    if digit_counts2==9:
+        lat = latitude*pow(10,-7)
+        lat_list.append(lat)
+    if digit_counts2==8:
+        lat = latitude*pow(10,-6)
+        lat_list.append(lat)
+
+people_info = pd.DataFrame({'house':info['house'],'longtitude':long_list,'latitude':lat_list})
+people_geo= pd.DataFrame({'longtitude':long_list,'latitude':lat_list})
+fixed6 = people_geo.dropna()
+
+#Δημιουργεία pairs
+pair= list()
+for i, row1 in fixed6.iterrows():
+    for i, row2 in df2.iterrows():
+        long1=row1['longtitude']
+        lat1=row1['latitude']
+        points1=(lat1, long1)
+        long2=row2['all_centers_long']
+        lat2=row2['all_centers_lat']
+        points2=(lat2, long2)
+        points_list=[points1,points2]
+        pair.append(points_list)
+
+#Δημιουργεία excel για το pair
+pair_df = pd.DataFrame(pair, columns=['people_coords', 'centers_coords'])
+pair_df.to_excel("excel files/coords.xlsx", index=False)
+
+#Υπολογισμός του distance 
+def get_distance(api_key, start, end):
+    gmaps = googlemaps.Client(key=api_key)
+    # Request directions
+    directions_result = gmaps.directions(start, end, mode="driving")
+    polyline = directions_result[0]['overview_polyline']['points']
+    decoded_polyline = poly_decode(polyline)
+    # Extract the distance
+    distance = directions_result[0]['legs'][0]['distance']['text']
+    distance = distance.replace(' km', '')
+    distance = float(distance)
+
+    return distance, decoded_polyline
+
+
+api_key = 'AIzaSyDTrLnYWUUgIylmNX5RUZlDaHfQx_MFrW8'
+
+distance = list()
+     
+#for start, end in pair:
+#    distance_km, decoded_polyline = get_distance(api_key, start, end)
+#    if distance_km is not None:
+#        distance.append(distance_km)
+
+
+#Δημιουργεία distance excel
+km_df = pd.DataFrame(distance,columns=['km']) 
+
+#Δημιουργεία list για non-median
+areas = df1.loc[:,['house']].drop_duplicates()
+non_median = [area for area in areas['house']]
+non_median_df = pd.DataFrame(non_median,columns=['non_median'])
+
+#Δημιουργεία list για τα centers
+centers = df2.loc[:,['all_centers']].drop_duplicates()
+candidate_location = [center for center in centers['all_centers']]
+centers_df = pd.DataFrame(candidate_location,columns=['centers'])
+
+name_ari_df = names.merge(people_ari, on='CODENAME', how='inner')
+
+
+#----FACTORS OF DEMAND----
+#1)visit
+#2)neuropsychiatic disorders
+#3)euro_per_inhabitant
+#4)dementia or depression prior
+#5)urol
+#6)age
+
+
+# Visits
+visit_list = list()
+
+mean_visit = people_visit.groupby('house')['visit'].mean()
+visit_list = [visit for visit in mean_visit]
+
+#min max visit 
+MAX_VISIT = max(visit_list)
+MIN_VISIT = min(visit_list)
+
+#normalized factor
+normalized_factor1 = list()
+if MAX_VISIT != MIN_VISIT :
+    if visit_list:
+        normalized_factor1 = [(visit-MIN_VISIT)/(MAX_VISIT-MIN_VISIT) for visit in visit_list]
+    print(f"normalized_factor1: {normalized_factor1}")
+
+# neuropsychiatic disorders
+neuro_list = list()
+
+mean_neuro = people_visit.groupby('house')['visit'].mean()
+neuro_list = [neuro for neuro in mean_neuro]
+
+#min max neuro 
+MAX_NEURO = max(neuro_list)
+MIN_NEURO = min(neuro_list)
+
+#normalized factor
+normalized_factor2 = list()
+if MAX_NEURO != MIN_NEURO :
+    if neuro_list:
+        normalized_factor2 = [(neuro-MIN_NEURO)/(MAX_NEURO-MIN_NEURO) for neuro in neuro_list]
+    print(f"normalized_factor2: {normalized_factor2}")

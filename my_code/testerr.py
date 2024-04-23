@@ -38,11 +38,18 @@ try:
     people_ari = synopsis.loc[:,['CODENAME','ARI(gr)']].drop_duplicates().dropna()
     name_house = df1.loc[:,['CODENAME','house']].drop_duplicates()
     name_visit = synopsis.loc[:,['CODENAME','visit']].drop_duplicates()
+    name_neuro = synopsis.loc[:,['CODENAME','neuropsychiatric disorders']].drop_duplicates()
+    name_dd = synopsis.loc[:,['CODENAME','dementia or depression prior']].drop_duplicates()
+    name_od = synopsis.loc[:,['CODENAME','other diseases (pneumon, endocr, hematol, urol, pain, gi']].drop_duplicates()
     people_visit = pd.merge(name_house, name_visit, on='CODENAME', how='inner')
+    people_neuro = pd.merge(name_house, name_neuro, on='CODENAME', how='inner')
+    people_dd = pd.merge(name_house, name_dd, on='CODENAME', how='inner')
+    people_od = pd.merge(name_house, name_od, on='CODENAME', how='inner')
 except FileNotFoundError:
     print("Excel file not found.")
 except pd.errors.ParserError:
     print("Invalid excel file format.")
+
 
 #μετατροπη συντεταγμένων longtitude και latitude 
 long_list= list()
@@ -71,10 +78,8 @@ for latitude in people_coords['latitude']:
         lat = latitude*pow(10,-6)
         lat_list.append(lat)
 
-#Δημιουργεία excel απο το lat_list και long_list 
 people_info = pd.DataFrame({'house':info['house'],'longtitude':long_list,'latitude':lat_list})
 people_geo= pd.DataFrame({'longtitude':long_list,'latitude':lat_list})
-people_geo.to_excel("excel files/people_geodata.xlsx", index=False)
 fixed6 = people_geo.dropna()
 
 #Δημιουργεία pairs
@@ -113,224 +118,154 @@ api_key = 'AIzaSyDTrLnYWUUgIylmNX5RUZlDaHfQx_MFrW8'
 
 distance = list()
      
-#for start, end in pair:
-#    distance_km, decoded_polyline = get_distance(api_key, start, end)
-#    if distance_km is not None:
-#        distance.append(distance_km)
+for start, end in pair:
+    distance_km, decoded_polyline = get_distance(api_key, start, end)
+    if distance_km is not None:
+        distance.append(distance_km)
 
 
 #Δημιουργεία distance excel
-km_df = pd.DataFrame(distance,columns=['km'])   
-km_df.to_excel("excel files/distance.xlsx",index=False)
-#Δημιουργεία excel ditance και pairs
-cd_df = pd.merge(pair_df, km_df, left_index=True, right_index=True)
-cd_df.to_excel('excel files/coords_and_distance .xlsx', index=False)
-
+km_df = pd.DataFrame(distance,columns=['km']) 
 
 #Δημιουργεία list για non-median
 areas = df1.loc[:,['house']].drop_duplicates()
-non_median = [area for area in areas['house']]
-#Δημιουργεία excel για non-median
-non_median_df = pd.DataFrame(non_median,columns=['non_median'])
-non_median_df.to_excel('excel files/only_non_median.xlsx', index=False)
 
+non_median = [area for area in areas['house']]
+non_median_df = pd.DataFrame(non_median,columns=['non_median'])
 
 #Δημιουργεία list για τα centers
 centers = df2.loc[:,['all_centers']].drop_duplicates()
 candidate_location = [center for center in centers['all_centers']]
-#Δημιουργεία excel με τα centers
 centers_df = pd.DataFrame(candidate_location,columns=['centers'])
-non_median_df.to_excel('excel files/only_centers.xlsx', index=False)
 
-
-#Δημιουργεία excel με τα names και τα ari's τους
 name_ari_df = names.merge(people_ari, on='CODENAME', how='inner')
-name_ari_df.to_excel('excel files/names_and_ari.xlsx', index=False)
 
 
 #----FACTORS OF DEMAND----
-#1) People_over_65_Population_COUNTY
-#2) Average age of elder people
-#3) GDP_per_capita_COUNTY
-#4) Euro_per_inhabitant_EU27
-#5) Accessibility/remoteness in (gr)
-#6) Visits to Hospitals 
+#1)visit
+#2)neuropsychiatic disorders
+#3)euro_per_inhabitant
+#4)dementia or depression prior
+#5)urol
+#6)age
 
-#1)People_over_65_Population_COUNTY
-elder_people = list()
-areas = df1['house'].unique()
 
-for area in areas : 
-    filtered_df = df1[df1['house'] == area]
-    people_over_65 = filtered_df['People_over_65_Population_COUNTY'].unique()
-    if len(people_over_65) > 0:
-        people_over_65 = people_over_65[0] #πάρε τη πρώτη τιμή
-        convert=float(people_over_65)
-        elder_people.append(convert)
-        #print(f"Area: {area}, People over 65: {people_over_65}")
-
-#min max των ηλικιωμένων
-MAX_ELDER = df1['People_over_65_Population_COUNTY'].max()
-MIN_ELDER = df1['People_over_65_Population_COUNTY'].min()
-
+# Visits
+visit_list = list()
+mean_visit = people_visit.groupby('house')['visit'].mean()
+visit_list = [visit for visit in mean_visit]
+#min max visit 
+MAX_VISIT = max(visit_list)
+MIN_VISIT = min(visit_list)
 #normalized factor
 normalized_factor1 = list()
-if MAX_ELDER != MIN_ELDER :
-    if elder_people:
-        normalized_factor1 = [(elder-MIN_ELDER)/(MAX_ELDER-MIN_ELDER) for elder in elder_people]
+if MAX_VISIT != MIN_VISIT :
+    if visit_list:
+        normalized_factor1 = [(visit-MIN_VISIT)/(MAX_VISIT-MIN_VISIT) for visit in visit_list]
     #print(f"normalized_factor1: {normalized_factor1}")
 
-#2)Μέσος όρος ηλικίας των ηλικιωμένων
+# neuropsychiatic disorders
+neuro_list = list()
+mean_neuro = people_neuro.groupby('house')['neuropsychiatric disorders'].mean()
+neuro_list = [neuro for neuro in mean_neuro]
+#min max neuro 
+MAX_NEURO = max(neuro_list)
+MIN_NEURO = min(neuro_list)
+#normalized factor
+normalized_factor2 = list()
+if MAX_NEURO != MIN_NEURO :
+    if neuro_list:
+        normalized_factor2 = [(neuro-MIN_NEURO)/(MAX_NEURO-MIN_NEURO) for neuro in neuro_list]
+    #print(f"normalized_factor2: {normalized_factor2}")
+
+#euro_per_inhabitant
+eu27_list = list()    
+areas = df1['house'].unique()
+for area in areas :
+    filtered_df = df1[df1['house'] == area]
+    euro_per_inhabitant = filtered_df['Euro_per_inhabitant_EU27'].unique()
+    if len(euro_per_inhabitant) > 0 : 
+        euro_per_inhabitant = euro_per_inhabitant[0] #πάρε τη πρώτη τιμή
+        convert=float(euro_per_inhabitant)
+        eu27_list.append(convert)
+#min max eu27
+MAX_EU27 = df1['Euro_per_inhabitant_EU27'].max()
+MIN_EU27 = df1['Euro_per_inhabitant_EU27'].min()
+#normalized factor
+normalized_factor3 = list()
+if MAX_EU27 != MIN_EU27 :
+    if eu27_list:
+        normalized_factor3 = [(eu27-MIN_EU27)/(MAX_EU27-MIN_EU27) for eu27 in eu27_list]
+    #print(f"normalized_factor3: {normalized_factor3}")
+
+
+#dementia or depression prior
+dd_list = list()
+mean_dd = people_dd.groupby('house')['dementia or depression prior'].mean()
+dd_list = [dd for dd in mean_dd]
+
+MAX_DD = max(dd_list)
+MIN_DD = min(dd_list)
+#normalized factor
+normalized_factor4 = list()
+if MAX_DD != MIN_DD :
+    if dd_list:
+        normalized_factor4 = [(dd-MIN_DD)/(MAX_DD-MIN_DD) for dd in dd_list]
+    #print(f"normalized_factor4: {normalized_factor4}")
+
+#urol
+#other diseases (pneumon, endocr, hematol, urol, pain, gi
+od_list = list()
+mean_od = people_od.groupby('house')['other diseases (pneumon, endocr, hematol, urol, pain, gi'].mean()
+od_list = [od for od in mean_od]
+
+MAX_OD = max(od_list)
+MIN_OD = min(od_list)
+#normalized factor
+normalized_factor5 = list()
+if MAX_OD != MIN_OD :
+    if od_list:
+        normalized_factor5 = [(od-MIN_OD)/(MAX_OD-MIN_OD) for od in od_list]
+    #print(f"normalized_factor5: {normalized_factor5}")
+
+#age 
 averages = list()
 mean_age = df1.groupby('house')['age'].mean()
-averages = [int(average) for average in mean_age]
+averages = [average for average in mean_age]
 
 #min max των μ.ο ηλικιών
 MAX_AVERAGE = max(averages)
 MIN_AVERAGE = min(averages)
 
 #normalized factor
-normalized_factor2 = list()
+normalized_factor6 = list()
 if MAX_AVERAGE != MIN_AVERAGE :
     if averages:
-        normalized_factor2 = [(avg-MIN_AVERAGE)/(MAX_AVERAGE-MIN_AVERAGE) for avg in averages]
-    #print(f"normalized_factor2: {normalized_factor2}")
-
-#3)GDP
-gdps = list()
-
-for area in areas :
-    filtered_df = df1[df1['house'] == area]
-    gdp_per_capita = filtered_df['GDP_per_capita_COUNTY'].unique()
-    if len(gdp_per_capita) > 0 : 
-        gdp_per_capita = gdp_per_capita[0] #πάρε τη πρώτη τιμή
-        convert=float(gdp_per_capita)
-        gdps.append(convert)
-        #print(f"Area: {area}, GDP_per_capita: {gdp_per_capita}")
-
-#min max gdp
-MAX_GDP = df1['GDP_per_capita_COUNTY'].max()
-MIN_GDP = df1['GDP_per_capita_COUNTY'].min()
-
-#normalized factor
-normalized_factor3 = list()
-if MAX_GDP != MIN_GDP :
-    if gdps:
-        normalized_factor3 = [(gdp-MIN_GDP)/(MAX_GDP-MIN_GDP) for gdp in gdps]
-    #print(f"normalized_factor2: {normalized_factor3}")
-
-#Euros
-euros = list()
-
-for area in areas:
-    filtered_df = df1[df1['house'] == area]
-    euro_per_inhabitant = filtered_df['Euro_per_inhabitant_EU27'].unique()
-    if len(euro_per_inhabitant) > 0:
-        euro_per_inhabitant = euro_per_inhabitant[0] #πάρε τη πρώτη τιμή
-        convert=float(euro_per_inhabitant)
-        euros.append(convert)
-       #print(f"Area: {area}, Euro_per_inhabitant: {euro_per_inhabitant}")
-
-#min max euro
-MAX_EURO = df1['Euro_per_inhabitant_EU27'].max()
-MIN_EURO = df1['Euro_per_inhabitant_EU27'].min()
-
-#normalized factor
-normalized_factor4= list()
-if MAX_EURO != MIN_EURO :
-    if euros:
-        normalized_factor4 = [(euro-MIN_EURO)/(MAX_EURO-MIN_EURO) for euro in euros]
-    #print(f"normalized_factor2: {normalized_factor4}")
-        
-#ARI(gr)
-ari_list = list()
-aris = name_ari_df['ARI(gr)'].unique()
-ari_list = [float(ari) for ari in aris]
-
-#min max ari
-MAX_ARI = max(ari_list)
-MIN_ARI = min(ari_list)
-
-#normalized factor
-normalized_factor5 = list()
-if MAX_ARI != MIN_ARI :
-    if ari_list:
-        normalized_factor5 = [(ari-MIN_ARI)/(MAX_ARI-MIN_ARI) for ari in ari_list]
-    #print(f"normalized_factor5: {normalized_factor5}")
-
-
-# Visits
-visit_list = list()
-
-mean_visit = people_visit.groupby('house')['visit'].mean()
-visit_list = [visit for visit in mean_visit]
-
-#min max visit 
-MAX_VISIT = max(visit_list)
-MIN_VISIT = min(visit_list)
-
-#normalized factor
-normalized_factor6 = list()
-if MAX_VISIT != MIN_VISIT :
-    if visit_list:
-        normalized_factor6 = [(visit-MIN_VISIT)/(MAX_VISIT-MIN_VISIT) for visit in visit_list]
+        normalized_factor6 = [(avg-MIN_AVERAGE)/(MAX_AVERAGE-MIN_AVERAGE) for avg in averages]
     #print(f"normalized_factor6: {normalized_factor6}")
 
-#Δημιουργεία ενός ενωμένου excel
-factor1_df = pd.DataFrame(normalized_factor1,columns=['over 65'])
-factor2_df = pd.DataFrame(normalized_factor2,columns=['avg_age'])
-factor3_df = pd.DataFrame(normalized_factor3,columns=['gdp'])
-factor4_df = pd.DataFrame(normalized_factor4,columns=['Euro'])
-factor5_df = pd.DataFrame(normalized_factor5,columns=['Ari'])
-factor6_df = pd.DataFrame(normalized_factor6,columns=['visit'])    
-factors_df = pd.merge(factor1_df, factor2_df, on=None, left_index=True, right_index=True)
-factors_df = pd.merge(factors_df, factor3_df, on=None, left_index=True, right_index=True)
-factors_df = pd.merge(factors_df, factor4_df, on=None, left_index=True, right_index=True)
-factors_df = pd.merge(factors_df, factor5_df, on=None, left_index=True, right_index=True)
-factors_df = pd.merge(factors_df, factor6_df, on=None, left_index=True, right_index=True)
-factors_df.to_excel('excel files/normalized_factors .xlsx', index=False)
-
-
-#Υπολογισμός weights για κάθε normalized function
-
 #----FACTORS OF DEMAND----
-#1) People_over_65_Population_COUNTY
-#2) Average age of elder people
-#3) GDP_per_capita_COUNTY
-#4) Euro_per_inhabitant_EU27
-#5) Accessibility/remoteness in (gr)
-#6) Visits to Hospitals 
+#1)visit
+#2)neuropsychiatic disorders
+#3)euro_per_inhabitant
+#4)dementia or depression prior
+#5)urol
+#6)age
 
-#weights = [0.2, 0.2, 0.3, 0.3]
-#weights = [0.2, 0.1, 0.2, 0.2,0.3]
-#weights = [0.025, 0.025, 0.025, 0.025,0.9]
-#weights = [0.025, 0.025, 0.9, 0.025,0.025]
-#weights = [0.1,0.9]
-#weights = [1]
-#weights = [0.2, 0.2, 0.1, 0.1,0.2,0.2]
-weights = [0.02, 0.02, 0.02, 0.02, 0.02, 0.9]
-
+#weights = [0.3, 0.3, 0.2, 0.1, 0.05, 0.05]
+#weights = [0.5, 0.2, 0.1, 0.1, 0.05, 0.05]
+weights = [0.025, 0.025, 0.025, 0.025, 0.4, 0.5]
 a1 =[number*weights[0] for number in normalized_factor1]
 a2 =[number*weights[1] for number in normalized_factor2]
 a3 =[number*weights[2] for number in normalized_factor3]
 a4 =[number*weights[3] for number in normalized_factor4]
 a5 =[number*weights[4] for number in normalized_factor5]
 a6 =[number*weights[5] for number in normalized_factor6]
-#a2 =[number*weights[0] for number in normalized_factor2]
-#a5 =[number*weights[1] for number in normalized_factor5]
-#result = [number1+number2+number3+number4 for number1,number2,number3,number4 in zip(a1,a2,a3,a4)]
-#result = [number1+number2+number3+number4+number5 for number1,number2,number3,number4,number5 in zip(a1,a2,a3,a4,a5)]
-#result = [number2+number5 for number2,number5 in zip(a2,a5)]
-#result = [number5 for number5 in a2]
+
 result = [number1+number2+number3+number4+number5+number6 for number1,number2,number3,number4,number5,number6 in zip(a1,a2,a3,a4,a5,a6)]
 
-
-#Δημιουργεία ενός result excel
 result_df =pd.DataFrame(result, columns = ['result'])
-result_df.to_excel('excel files/weight_and_factors_result.xlsx', index=False)
 
-
-                   #-----------P-median----------------
 def solve_p_median(p):
     # Set the working directory to the script's directory
     os.chdir(os.path.dirname(os.path.abspath(__file__)))
@@ -379,7 +314,6 @@ def solve_p_median(p):
 
 solved_model = solve_p_median(5)
 
-
 #Δημιουργεία graph
 G = nx.Graph()
 
@@ -412,8 +346,7 @@ for node in G.nodes():
 plt.figure(figsize=(12,15))
 nx.draw_networkx(G, with_labels=True, node_color=node_colors, node_size=800, font_size=10, font_color='black')
 plt.show()
-plt.savefig('plot.png')
-
+plt.savefig('plot1.png')
 
 #Δημιουργεία map
 map = folium.Map(
@@ -424,50 +357,4 @@ map = folium.Map(
 
 #Δημιουργεια edges excel    
 cleaned_df = pd.DataFrame(cleaned_edges_list, columns = ['non_median','centers'])
-cleaned_df.to_excel('excel files/edges.xlsx', index = False)
-
-
-#Δημιουργεία ενός dictionary για κάθε center στα coords του
-center_coords_dict = dict(zip(df2['all_centers'], 
-                              zip(df2['all_centers_lat'], 
-                                  df2['all_centers_long'])))
-#Δημιουργεία ενός dictionary για κάθε people στα coords του
-people_info_dict = dict(zip(people_info['house'],
-                             zip(people_info['latitude'],
-                                  people_info['longtitude'])))
-
-for index, edge in enumerate(cleaned_edges_list):
-    non_median = edge[0]
-    center = edge[1].strip()
-
-    non_median_coords = people_info_dict.get(non_median)
-    cecoords = center_coords_dict.get(center)
-     
-    #Non-median
-    folium.Marker(
-        location=[non_median_coords[0], non_median_coords[1]],
-        popup=f"Non Median: {non_median}",
-        icon=folium.Icon(prefix="fa",icon ="home")
-    ).add_to(map)
-
-    if center in [center for edge in cleaned_edges_list]:
-                
-                distance_km, decoded_polyline = get_distance(api_key,non_median_coords, cecoords)
-                #Centers
-                folium.Marker(  
-                    location=[cecoords[0], cecoords[1]],
-                    popup=f"Center: {center}",
-                    icon=folium.Icon(color='green',icon='medkit',prefix="fa")
-                ).add_to(map) 
-                #Distance 
-                folium.PolyLine(
-                    locations=decoded_polyline,
-                    color='blue',
-                    weight=2,
-                    popup=f"{non_median} connects to {center} th {distance_km} km" if distance_km else  None
-                ).add_to(map)
-
-
-# Display the map
-map.save('map.html')
-webbrowser.open('map.html')
+cleaned_df.to_excel('excel files/edges_visit.xlsx', index = False)
